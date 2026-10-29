@@ -1246,19 +1246,6 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb {
   gap: 8px;
 }
 
-.fullscreen-control-wrap + .fullscreen-control-wrap {
-  margin-top: 8px;
-}
-
-.server-status.hint {
-  margin: 10px 0 0;
-}
-
-.fullscreen-toggle-btn.off {
-  border-color: rgba(229,9,20,0.4);
-  color: #ff6b73;
-}
-
 .fullscreen-toggle-btn {
   flex: 1;
   padding: 12px;
@@ -1312,7 +1299,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb {
 }
 
 .ep-section {
-  padding: 20px;
+  padding: 20px 20px calc(var(--nav-h) + 40px);
 }
 
 .ep-grid {
@@ -1823,10 +1810,6 @@ body[data-theme="light"] .server-status {
   color: #666;
 }
 
-body[data-theme="light"] .fullscreen-toggle-btn.off {
-  color: #c40812;
-}
-
 body[data-theme="light"] .detail-season-select {
   background: #fff;
   color: #1a1a1a;
@@ -1986,7 +1969,6 @@ body[data-theme="light"] .btn-danger-action:hover {
                         class="player"
                         allowfullscreen=""
                         allow="autoplay; encrypted-media; picture-in-picture"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-orientation-lock"
                         src="about:blank"
                     ></iframe>
                     <button class="cinema-close-btn" onclick="exitCinemaMode()">
@@ -2016,12 +1998,6 @@ body[data-theme="light"] .btn-danger-action:hover {
                         <i class="fas fa-expand"></i> Mode Fullscreen
                     </button>
                 </div>
-                <div class="fullscreen-control-wrap">
-                    <button class="fullscreen-toggle-btn" id="shieldBtn" onclick="toggleShield()">
-                        <i class="fas fa-shield-halved"></i> <span id="shieldLabel">Proteksi Redirect: Aktif</span>
-                    </button>
-                </div>
-                <div class="server-status hint" id="shieldHint"></div>
                 <div class="ep-selectors" id="epSelectors" style="display: none">
                     <select class="ep-select" id="seasonSel"></select>
                     <select class="ep-select" id="epSel"></select>
@@ -2291,8 +2267,6 @@ let serverPicked = false;
 let serverNote = "";
 let playerMounted = false;
 
-const UNSAFE_KEY = "hidzmovie_unsafe_servers";
-const PLAYER_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-orientation-lock";
 const UNRELEASED_STATUS = ["Rumored", "Planned", "In Production", "Post Production", "Canceled"];
 
 function localToday() {
@@ -2332,38 +2306,6 @@ async function openTrailer(item) {
   const url = await findTrailerUrl(item);
   if (tab) tab.location.href = url;
   else window.location.href = url;
-}
-
-// Proteksi: iframe di-sandbox tanpa izin popup dan pindah halaman, jadi iklan tidak bisa
-// membawa pengunjung keluar dari situs. Server yang menolak sandbox bisa dimatikan sendiri.
-function readUnsafeServers() {
-  try {
-    const list = JSON.parse(localStorage.getItem(UNSAFE_KEY) || "[]");
-    return Array.isArray(list) ? list : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function shieldOn(name) {
-  return !readUnsafeServers().includes(name);
-}
-
-function updateShieldUI() {
-  const on = shieldOn(currentServer);
-  document.getElementById("shieldLabel").textContent = `Proteksi Redirect: ${on ? "Aktif" : "Mati"}`;
-  document.getElementById("shieldBtn").classList.toggle("off", !on);
-  document.getElementById("shieldHint").textContent = on
-    ? "Iklan yang memindahkan halaman diblokir. Video kosong di server ini? Matikan proteksi atau tekan Server Lain."
-    : "Proteksi mati untuk server ini, iklan bisa memindahkan halaman.";
-}
-
-function toggleShield() {
-  if (!currentItem) return;
-  const list = readUnsafeServers().filter(n => n !== currentServer);
-  if (shieldOn(currentServer)) list.push(currentServer);
-  try { localStorage.setItem(UNSAFE_KEY, JSON.stringify(list)); } catch (e) {}
-  updatePlayer();
 }
 
 function serverLabel(name) {
@@ -2461,13 +2403,11 @@ function nextServer() {
   changeServer(nextServerFrom(currentServer));
 }
 
-function mountPlayer(src, shield = true) {
+function mountPlayer(src) {
   // Iframe dibuat ulang tiap ganti sumber, supaya riwayat browser tidak menumpuk
   // dan tombol Back tetap keluar dari halaman nonton
   const old = document.getElementById("player");
   const frame = old.cloneNode(false);
-  if (shield) frame.setAttribute("sandbox", PLAYER_SANDBOX);
-  else frame.removeAttribute("sandbox");
   frame.src = src;
   old.replaceWith(frame);
   return frame;
@@ -2481,9 +2421,8 @@ function updatePlayer() {
   const type = currentItem.type || currentItem.media_type || "movie";
   let src = type === "movie" ? SERVERS[currentServer].movie(currentItem.id) : SERVERS[currentServer].tv(currentItem.id, currentSeason, currentEpisode);
 
-  mountPlayer(src, shieldOn(currentServer)).onload = () => loader.classList.remove("active");
+  mountPlayer(src).onload = () => loader.classList.remove("active");
   playerMounted = true;
-  updateShieldUI();
   document.getElementById("serverStatus").textContent = serverNote || `Server aktif: ${serverLabel(currentServer)}. Tidak bisa diputar? Tekan Server Lain.`;
   document.getElementById("watchTitle").textContent = type === "tv" ? `${currentItem.title} — S${currentSeason} E${currentEpisode}` : currentItem.title;
   addToHistory(currentItem, type === "tv" ? currentSeason : null, type === "tv" ? currentEpisode : null);
