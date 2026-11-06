@@ -1243,6 +1243,7 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb {
 .fullscreen-control-wrap {
   margin-top: 4px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1270,6 +1271,19 @@ body[data-theme="light"] ::-webkit-scrollbar-thumb {
   background: rgba(229,9,20,0.15);
   border-color: rgba(229,9,20,0.4);
   color: #fff;
+}
+
+.shield-btn {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.shield-btn.on i {
+  color: #46d369;
+}
+
+.shield-btn.off {
+  opacity: 0.7;
 }
 
 .ep-selectors {
@@ -1997,6 +2011,9 @@ body[data-theme="light"] .btn-danger-action:hover {
                     <button class="fullscreen-toggle-btn" onclick="toggleCinemaMode()">
                         <i class="fas fa-expand"></i> Mode Fullscreen
                     </button>
+                    <button class="fullscreen-toggle-btn shield-btn on" id="shieldBtn" onclick="toggleShield()">
+                        <i class="fas fa-shield-halved"></i> <span id="shieldTxt">Anti Pop-up: Aktif</span>
+                    </button>
                 </div>
                 <div class="ep-selectors" id="epSelectors" style="display: none">
                     <select class="ep-select" id="seasonSel"></select>
@@ -2260,6 +2277,11 @@ function debounce(func, wait) {
 const SERVER_PREF_KEY = "hidzmovie_servers";
 const SERVER_CHECK_TTL = 5 * 60 * 1000;
 
+// Pemutar milik pihak ketiga dijalankan di dalam sandbox. Tanpa allow-popups dan allow-top-navigation,
+// klik play di dalamnya tidak bisa membuka tab baru atau membawa halaman ini ke situs lain.
+const SHIELD_FLAGS = "allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock allow-orientation-lock";
+const SHIELD_OFF_KEY = "hidzmovie_shield_off";
+
 const serverHealth = {};
 let serverChecked = 0;
 let serverCheckJob = null;
@@ -2315,6 +2337,7 @@ function serverLabel(name) {
 
 function setActiveServer(name) {
   document.querySelectorAll(".srv-btn").forEach(b => b.classList.toggle("active", b.dataset.server === name));
+  if (name === currentServer) renderShieldBtn();
 }
 
 function itemKey(item) {
@@ -2403,11 +2426,43 @@ function nextServer() {
   changeServer(nextServerFrom(currentServer));
 }
 
+// Server yang tidak mau jalan di dalam sandbox bisa dimatikan perlindungannya satu per satu; pilihannya diingat
+function readShieldOff() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SHIELD_OFF_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function shieldOn(server) {
+  return !readShieldOff().includes(server);
+}
+
+function renderShieldBtn() {
+  const on = shieldOn(currentServer);
+  const btn = document.getElementById("shieldBtn");
+  btn.classList.toggle("on", on);
+  btn.classList.toggle("off", !on);
+  document.getElementById("shieldTxt").textContent = `Anti Pop-up: ${on ? "Aktif" : "Mati"}`;
+}
+
+function toggleShield() {
+  const off = readShieldOff().filter(n => n !== currentServer);
+  if (shieldOn(currentServer)) off.push(currentServer);
+  try { localStorage.setItem(SHIELD_OFF_KEY, JSON.stringify(off)); } catch (e) {}
+  renderShieldBtn();
+  if (playerMounted) updatePlayer();
+}
+
 function mountPlayer(src) {
   // Iframe dibuat ulang tiap ganti sumber, supaya riwayat browser tidak menumpuk
   // dan tombol Back tetap keluar dari halaman nonton
   const old = document.getElementById("player");
   const frame = old.cloneNode(false);
+  if (shieldOn(currentServer)) frame.setAttribute("sandbox", SHIELD_FLAGS);
+  else frame.removeAttribute("sandbox");
   frame.src = src;
   old.replaceWith(frame);
   return frame;
@@ -2423,7 +2478,7 @@ function updatePlayer() {
 
   mountPlayer(src).onload = () => loader.classList.remove("active");
   playerMounted = true;
-  document.getElementById("serverStatus").textContent = serverNote || `Server aktif: ${serverLabel(currentServer)}. Tidak bisa diputar? Tekan Server Lain.`;
+  document.getElementById("serverStatus").textContent = serverNote || `Server aktif: ${serverLabel(currentServer)}. Tidak bisa diputar? Tekan Server Lain, atau matikan Anti Pop-up.`;
   document.getElementById("watchTitle").textContent = type === "tv" ? `${currentItem.title} — S${currentSeason} E${currentEpisode}` : currentItem.title;
   addToHistory(currentItem, type === "tv" ? currentSeason : null, type === "tv" ? currentEpisode : null);
 }
